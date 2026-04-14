@@ -10,6 +10,7 @@ public class HighAccuracyWindowsTimer : HighAccuracyTimer
     private readonly EventWaitHandle _cancelSignal = new(initialState: false, EventResetMode.ManualReset);
     private readonly SafeWaitHandle _timerHandle;
     private readonly EventWaitHandle _timerSignal = new(initialState: false, EventResetMode.ManualReset);
+    private readonly ManualResetEventSlim _waitCompleted = new(initialState: true);
 
     private bool _disposed;
     private bool _waitInProgress;
@@ -89,9 +90,11 @@ public class HighAccuracyWindowsTimer : HighAccuracyTimer
     public void Dispose()
     {
         bool alreadyDisposed;
+        bool waitInProgress;
         lock (_lock)
         {
             alreadyDisposed = _disposed;
+            waitInProgress = _waitInProgress;
             _disposed = true;
         }
 
@@ -101,9 +104,16 @@ public class HighAccuracyWindowsTimer : HighAccuracyTimer
         }
 
         SignalCancellation();
+
+        if (waitInProgress)
+        {
+            _waitCompleted.Wait();
+        }
+
         _cancelSignal.Dispose();
         _timerSignal.Dispose();
         _timerHandle.Dispose();
+        _waitCompleted.Dispose();
     }
 
     private void BeginWait()
@@ -117,6 +127,7 @@ public class HighAccuracyWindowsTimer : HighAccuracyTimer
             }
 
             _waitInProgress = true;
+            _waitCompleted.Reset();
             _cancelSignal.Reset();
         }
     }
@@ -130,12 +141,21 @@ public class HighAccuracyWindowsTimer : HighAccuracyTimer
             {
                 _cancelSignal.Reset();
             }
+
+            _waitCompleted.Set();
         }
     }
 
     private void SignalCancellation()
     {
-        _cancelSignal.Set();
+        try
+        {
+            _cancelSignal.Set();
+        }
+        catch (ObjectDisposedException)
+        {
+            return;
+        }
 
         if (!_timerHandle.IsClosed && !_timerHandle.IsInvalid)
         {
