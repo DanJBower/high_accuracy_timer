@@ -3,7 +3,6 @@
 public sealed record SchedulerOptions
 {
     public required TimeSpan Period { get; init; }
-    public required bool DropSkippedTicks { get; init; } = true;
 
     /// <summary>
     /// How many iterations to run for.
