@@ -157,7 +157,7 @@ void LogEvent(List<string> logs, int executionsRemaining)
 
 string FormatElapsedForLog(TimeSpan elapsed)
 {
-    var totalSeconds = elapsed.TotalSeconds;
+    var totalSeconds = (long)elapsed.TotalSeconds;
     var milliseconds = elapsed.Milliseconds;
     var subMillisecondTicks = elapsed.Ticks % TimeSpan.TicksPerMillisecond;
     return $"{totalSeconds:00}.{milliseconds:000}_{subMillisecondTicks:0000}";
