@@ -14,6 +14,12 @@ public sealed record SchedulerOptions
     public long? StopAfterScheduledTicks { get; init; }
 }
 
+public sealed record BasicSchedulerOptions
+{
+    public required TimeSpan Period { get; init; }
+    public bool AutoReset { get; init; } = true;
+}
+
 public interface HighAccuracyTimer : IDisposable
 {
     ValueTask WaitAsync(TimeSpan dueIn, CancellationToken cancellationToken = default);
@@ -29,6 +35,22 @@ public readonly record struct ScheduledTick(
     TimeSpan SincePreviousDelivery,
     TimeSpan Drift,
     long? RemainingScheduledTicksAtDispatch);
+
+public interface BasicScheduler : IAsyncDisposable
+{
+    TimeSpan Period { get; }
+    bool AutoReset { get; }
+    bool IsRunning { get; }
+
+    ValueTask StartAsync(CancellationToken cancellationToken = default);
+    ValueTask CancelAsync(CancellationToken cancellationToken = default);
+
+    ValueTask<ScheduledTick?> WaitForNextTickAsync(
+        CancellationToken cancellationToken = default);
+
+    IAsyncEnumerable<ScheduledTick> GetTicksAsync(
+        CancellationToken cancellationToken = default);
+}
 
 public interface Scheduler : IAsyncDisposable
 {

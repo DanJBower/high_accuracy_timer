@@ -86,31 +86,10 @@ async Task RunTimerComparison()
         [oneMsThreadingTimerExecutions] = new(oneMsRate),
     };
 
-    using HighAccuracyTimer fiftyMsHighAccuracyTimer = new HighAccuracyWindowsTimer(AutoStart: false)
-    {
-        Rate = fiftyMsRate,
-    };
-    fiftyMsHighAccuracyTimer.Elapsed += (sender, args) => { LogEvent(fiftyMsHighAccuracyTimerExecutions, args.RemainingExecutions); };
-
-    using HighAccuracyTimer sixtyFpsHighAccuracyTimer = new HighAccuracyWindowsTimer(AutoStart: false)
-    {
-        Rate = sixtyFpsRate,
-        StopAfter = 600,
-    };
-    sixtyFpsHighAccuracyTimer.Elapsed += (sender, args) => { LogEvent(sixtyFpsHighAccuracyTimerExecutions, args.RemainingExecutions); };
-
-    using HighAccuracyTimer oneSecondHighAccuracyTimer = new HighAccuracyWindowsTimer(AutoStart: false)
-    {
-        Rate = oneSecondRate,
-    };
-    oneSecondHighAccuracyTimer.Elapsed += (sender, args) => { LogEvent(oneSecondHighAccuracyTimerExecutions, args.RemainingExecutions); };
-
-    using HighAccuracyTimer oneMsHighAccuracyTimer = new HighAccuracyWindowsTimer(AutoStart: false)
-    {
-        Rate = oneMsRate,
-        StopAfter = 2000,
-    };
-    oneMsHighAccuracyTimer.Elapsed += (sender, args) => { LogEvent(oneMsHighAccuracyTimerExecutions, args.RemainingExecutions); };
+    await using var fiftyMsHighAccuracyScheduler = CreateBasicScheduler(fiftyMsRate);
+    await using var sixtyFpsHighAccuracyScheduler = CreateBasicScheduler(sixtyFpsRate);
+    await using var oneSecondHighAccuracyScheduler = CreateBasicScheduler(oneSecondRate);
+    await using var oneMsHighAccuracyScheduler = CreateBasicScheduler(oneMsRate);
 
     using var fiftyMsTimersTimer = CreateTimersTimer(fiftyMsRate, fiftyMsTimersTimerExecutions);
     using var sixtyFpsTimersTimer = CreateTimersTimer(sixtyFpsRate, sixtyFpsTimersTimerExecutions);
@@ -134,10 +113,18 @@ async Task RunTimerComparison()
         RunPeriodicTimerAsync(oneMsRate, oneMsPeriodicTimerExecutions, periodicTimerCancellationTokenSource.Token),
     ];
 
-    fiftyMsHighAccuracyTimer.Start();
-    sixtyFpsHighAccuracyTimer.Start();
-    oneSecondHighAccuracyTimer.Start();
-    oneMsHighAccuracyTimer.Start();
+    await fiftyMsHighAccuracyScheduler.StartAsync();
+    await sixtyFpsHighAccuracyScheduler.StartAsync();
+    await oneSecondHighAccuracyScheduler.StartAsync();
+    await oneMsHighAccuracyScheduler.StartAsync();
+
+    Task[] highAccuracySchedulerTasks =
+    [
+        RunBasicSchedulerAsync(fiftyMsHighAccuracyScheduler, fiftyMsHighAccuracyTimerExecutions),
+        RunBasicSchedulerAsync(sixtyFpsHighAccuracyScheduler, sixtyFpsHighAccuracyTimerExecutions),
+        RunBasicSchedulerAsync(oneSecondHighAccuracyScheduler, oneSecondHighAccuracyTimerExecutions),
+        RunBasicSchedulerAsync(oneMsHighAccuracyScheduler, oneMsHighAccuracyTimerExecutions),
+    ];
 
     fiftyMsTimersTimer.Start();
     sixtyFpsTimersTimer.Start();
@@ -151,10 +138,10 @@ async Task RunTimerComparison()
 
     await Task.Delay(20100);
 
-    fiftyMsHighAccuracyTimer.Stop();
-    sixtyFpsHighAccuracyTimer.Stop();
-    oneSecondHighAccuracyTimer.Stop();
-    oneMsHighAccuracyTimer.Stop();
+    await fiftyMsHighAccuracyScheduler.CancelAsync();
+    await sixtyFpsHighAccuracyScheduler.CancelAsync();
+    await oneSecondHighAccuracyScheduler.CancelAsync();
+    await oneMsHighAccuracyScheduler.CancelAsync();
 
     fiftyMsTimersTimer.Stop();
     sixtyFpsTimersTimer.Stop();
@@ -167,6 +154,7 @@ async Task RunTimerComparison()
     StopThreadingTimer(oneMsThreadingTimer);
 
     periodicTimerCancellationTokenSource.Cancel();
+    await Task.WhenAll(highAccuracySchedulerTasks);
     await Task.WhenAll(periodicTimerTasks);
 
     foreach (var logs in allLogs)
@@ -231,6 +219,14 @@ async Task RunTimerComparison()
         }
     }
 
+    async Task RunBasicSchedulerAsync(BasicScheduler scheduler, List<string> logs)
+    {
+        await foreach (var tick in scheduler.GetTicksAsync())
+        {
+            LogEvent(logs, tick.RemainingScheduledTicksAtDispatch is long remaining ? (int)remaining : -1);
+        }
+    }
+
     void WriteLogFile(List<string> logs)
     {
         string[] snapshot;
@@ -251,6 +247,17 @@ async Task RunTimerComparison()
     void StopThreadingTimer(System.Threading.Timer timer)
     {
         timer.Change(Timeout.InfiniteTimeSpan, Timeout.InfiniteTimeSpan);
+    }
+
+    static BasicScheduler CreateBasicScheduler(TimeSpan period)
+    {
+        return new HighAccuracyBasicScheduler(
+            timer: new HighAccuracyWindowsTimer(),
+            options: new BasicSchedulerOptions
+            {
+                Period = period,
+                AutoReset = true,
+            });
     }
 }
 
