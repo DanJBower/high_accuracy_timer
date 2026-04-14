@@ -1,5 +1,6 @@
 ﻿
 using HighAccuracyTimers;
+using System.Collections.Concurrent;
 using System.Diagnostics;
 
 #pragma warning disable CA1859
@@ -43,6 +44,7 @@ List<string>[] allLogs =
 
 long startTime = 0;
 TimeSpan sixtyFpsRate = TimeSpanUtilties.FromHz(60);
+ConcurrentDictionary<List<string>, long> previousLogElapsedTicks = new();
 
 using HighAccuracyTimer fiftyMsHighAccuracyTimer = new HighAccuracyWindowsTimer(AutoStart: false)
 {
@@ -148,10 +150,15 @@ void WriteLogFile(List<string> logs)
 void LogEvent(List<string> logs, int executionsRemaining)
 {
     var elapsed = Stopwatch.GetElapsedTime(startTime);
+    var elapsedTicks = elapsed.Ticks;
     var formattedElapsed = FormatElapsedForLog(elapsed);
     lock (logs)
     {
-        logs.Add($"* Timestamp: {formattedElapsed} - Remaining Executions: {executionsRemaining}");
+        previousLogElapsedTicks.TryGetValue(logs, out var previousElapsedTicks);
+        var timeSinceLastLog = TimeSpan.FromTicks(elapsedTicks - previousElapsedTicks);
+        previousLogElapsedTicks[logs] = elapsedTicks;
+
+        logs.Add($"* Timestamp: {formattedElapsed} - Since Last: {FormatElapsedForLog(timeSinceLastLog)} - Remaining Executions: {executionsRemaining}");
     }
 }
 
