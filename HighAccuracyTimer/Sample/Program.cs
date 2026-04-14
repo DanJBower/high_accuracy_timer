@@ -148,10 +148,19 @@ void WriteLogFile(List<string> logs)
 void LogEvent(List<string> logs, int executionsRemaining)
 {
     var elapsed = Stopwatch.GetElapsedTime(startTime);
+    var formattedElapsed = FormatElapsedForLog(elapsed);
     lock (logs)
     {
-        logs.Add($"* Timestamp: {elapsed} - Remaining Executions: {executionsRemaining}");
+        logs.Add($"* Timestamp: {formattedElapsed} - Remaining Executions: {executionsRemaining}");
     }
+}
+
+string FormatElapsedForLog(TimeSpan elapsed)
+{
+    var totalSeconds = elapsed.TotalSeconds;
+    var milliseconds = elapsed.Milliseconds;
+    var subMillisecondTicks = elapsed.Ticks % TimeSpan.TicksPerMillisecond;
+    return $"{totalSeconds:00}.{milliseconds:000}_{subMillisecondTicks:0000}";
 }
 
 System.Timers.Timer CreateTimersTimer(TimeSpan interval, List<string> logs)
