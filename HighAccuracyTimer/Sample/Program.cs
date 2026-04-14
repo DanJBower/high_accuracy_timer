@@ -38,31 +38,44 @@ async Task RunMoreComplexSample()
     {
         await Task.Delay(500, ct);
         AddLog($"Normal: {tick}");
-        throw new Exception("Test");
+        // throw new Exception("Test"); // Uncomment to see exceptions bubble through
     });
 
     await scheduler.StartAsync();
     var dispatchingTask = dispatcher.DispatchAsync();
-    await Task.Delay(TimeSpan.FromSeconds(2));
-
-    scheduler.SetRemainingScheduledTicks(8);
-
-    await Task.Delay(TimeSpan.FromSeconds(3));
-
-    await sub1.DisposeAsync();
-
-    using var sub3 = dispatcher.Subscribe(async (tick, ct) =>
+    try
     {
-        // Will eventually cause 2 cycles to be skipped, est (20s)
-        await Task.Delay(2100, ct);
-        AddLog($"Overrun causer: {tick}");
-    });
-    scheduler.SetRemainingScheduledTicks(null);
+        // To see exception, need to await main task but also want to do the delay
+        await Task.WhenAny([dispatchingTask, Task.Delay(TimeSpan.FromSeconds(2))]);
 
-    await Task.Delay(TimeSpan.FromSeconds(30));
+        scheduler.SetRemainingScheduledTicks(8);
 
-    await scheduler.StopAsync();
-    await dispatchingTask;
+        await WaitForDelayOrDispatchAsync(dispatchingTask, TimeSpan.FromSeconds(3));
+
+        await sub1.DisposeAsync();
+
+        using var sub3 = dispatcher.Subscribe(async (tick, ct) =>
+        {
+            // Will eventually cause 2 cycles to be skipped, est (20s)
+            await Task.Delay(2100, ct);
+            AddLog($"Overrun causer: {tick}");
+        });
+        scheduler.SetRemainingScheduledTicks(null);
+
+        await WaitForDelayOrDispatchAsync(dispatchingTask, TimeSpan.FromSeconds(30));
+    }
+    finally
+    {
+        if (scheduler.IsRunning)
+        {
+            await scheduler.StopAsync();
+        }
+
+        if (!dispatchingTask.IsCompleted)
+        {
+            await dispatchingTask;
+        }
+    }
 
     Console.WriteLine("Finished running complex sample");
 
@@ -343,6 +356,13 @@ async Task RunTimerComparison()
                 StopAfterScheduledTicks = scheduledTicks,
             });
     }
+}
+
+static async Task WaitForDelayOrDispatchAsync(Task dispatchTask, TimeSpan delay, CancellationToken cancellationToken = default)
+{
+    var delayTask = Task.Delay(delay, cancellationToken);
+    var completedTask = await Task.WhenAny(dispatchTask, delayTask);
+    await completedTask;
 }
 
 string FormatElapsedForLog(TimeSpan elapsed)
