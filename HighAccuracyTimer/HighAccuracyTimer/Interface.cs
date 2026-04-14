@@ -9,15 +9,9 @@ public sealed record SchedulerOptions
     ///
     /// Null for indefinite or positive value.
     /// Counts scheduled slots, not delivered callbacks.
-    /// Overruns will reduce the number of actual executions
+    /// Overdue scheduled slots are still consumed, even if they are skipped.
     /// </summary>
     public long? StopAfterScheduledTicks { get; init; }
-}
-
-public sealed record BasicSchedulerOptions
-{
-    public required TimeSpan Period { get; init; }
-    public bool AutoReset { get; init; } = true;
 }
 
 public interface HighAccuracyTimer : IDisposable
