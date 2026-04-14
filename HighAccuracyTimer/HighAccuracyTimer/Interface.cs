@@ -36,22 +36,6 @@ public readonly record struct ScheduledTick(
     TimeSpan Drift,
     long? RemainingScheduledTicksAtDispatch);
 
-public interface BasicScheduler : IAsyncDisposable
-{
-    TimeSpan Period { get; }
-    bool AutoReset { get; }
-    bool IsRunning { get; }
-
-    ValueTask StartAsync(CancellationToken cancellationToken = default);
-    ValueTask CancelAsync(CancellationToken cancellationToken = default);
-
-    ValueTask<ScheduledTick?> WaitForNextTickAsync(
-        CancellationToken cancellationToken = default);
-
-    IAsyncEnumerable<ScheduledTick> GetTicksAsync(
-        CancellationToken cancellationToken = default);
-}
-
 public interface Scheduler : IAsyncDisposable
 {
     TimeSpan Period { get; }
