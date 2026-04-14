@@ -4,81 +4,198 @@ using System.Diagnostics;
 
 #pragma warning disable CA1859
 
-// TODO Create lists for oneSecond and sixtyFps periodic, timers, and threading timers
-// TODO Make all list names consistent
-List<string> fiftyMsPeriodicTimerExecutions = ["50ms Period Timer:"];
+List<string> fiftyMsHighAccuracyTimerExecutions = ["50ms High Accuracy Timer:"];
+List<string> fiftyMsPeriodicTimerExecutions = ["50ms Periodic Timer:"];
 List<string> fiftyMsTimersTimerExecutions = ["50ms Timers Timer:"];
 List<string> fiftyMsThreadingTimerExecutions = ["50ms Threading Timer:"];
-List<string> fiftyMsExecutions = ["50ms High Accuracy Timer:"];
-List<string> sixtyFpsExecutions = ["60Hz High Accuracy Timer:"];
-List<string> oneSecondExecutions = ["1s High Accuracy Timer:"];
-List<string> oneMsPeriodicTimerExecutions = ["1ms Period Timer:"];
+List<string> sixtyFpsHighAccuracyTimerExecutions = ["60Hz High Accuracy Timer:"];
+List<string> sixtyFpsPeriodicTimerExecutions = ["60Hz Periodic Timer:"];
+List<string> sixtyFpsTimersTimerExecutions = ["60Hz Timers Timer:"];
+List<string> sixtyFpsThreadingTimerExecutions = ["60Hz Threading Timer:"];
+List<string> oneSecondHighAccuracyTimerExecutions = ["1s High Accuracy Timer:"];
+List<string> oneSecondPeriodicTimerExecutions = ["1s Periodic Timer:"];
+List<string> oneSecondTimersTimerExecutions = ["1s Timers Timer:"];
+List<string> oneSecondThreadingTimerExecutions = ["1s Threading Timer:"];
+List<string> oneMsHighAccuracyTimerExecutions = ["1ms High Accuracy Timer:"];
+List<string> oneMsPeriodicTimerExecutions = ["1ms Periodic Timer:"];
 List<string> oneMsTimersTimerExecutions = ["1ms Timers Timer:"];
 List<string> oneMsThreadingTimerExecutions = ["1ms Threading Timer:"];
-List<string> oneMsExecutions = ["1ms High Accuracy Timer:"];
+
+List<string>[] allLogs =
+[
+    fiftyMsHighAccuracyTimerExecutions,
+    fiftyMsPeriodicTimerExecutions,
+    fiftyMsTimersTimerExecutions,
+    fiftyMsThreadingTimerExecutions,
+    sixtyFpsHighAccuracyTimerExecutions,
+    sixtyFpsPeriodicTimerExecutions,
+    sixtyFpsTimersTimerExecutions,
+    sixtyFpsThreadingTimerExecutions,
+    oneSecondHighAccuracyTimerExecutions,
+    oneSecondPeriodicTimerExecutions,
+    oneSecondTimersTimerExecutions,
+    oneSecondThreadingTimerExecutions,
+    oneMsHighAccuracyTimerExecutions,
+    oneMsPeriodicTimerExecutions,
+    oneMsTimersTimerExecutions,
+    oneMsThreadingTimerExecutions,
+];
 
 long startTime = 0;
+TimeSpan sixtyFpsRate = TimeSpanUtilties.FromHz(60);
 
-using HighAccuracyTimer fiftyMs = new HighAccuracyWindowsTimer(AutoStart: false)
+using HighAccuracyTimer fiftyMsHighAccuracyTimer = new HighAccuracyWindowsTimer(AutoStart: false)
 {
     Rate = TimeSpan.FromMilliseconds(50),
 };
-fiftyMs.Elapsed += (sender, args) => { LogEvent(fiftyMsExecutions, args.RemainingExecutions); };
+fiftyMsHighAccuracyTimer.Elapsed += (sender, args) => { LogEvent(fiftyMsHighAccuracyTimerExecutions, args.RemainingExecutions); };
 
-using HighAccuracyTimer sixtyFps = new HighAccuracyWindowsTimer(AutoStart: false)
+using HighAccuracyTimer sixtyFpsHighAccuracyTimer = new HighAccuracyWindowsTimer(AutoStart: false)
 {
-    Rate = TimeSpanUtilties.FromHz(60),
+    Rate = sixtyFpsRate,
+    StopAfter = 600,
 };
-sixtyFps.Elapsed += (sender, args) => { LogEvent(sixtyFpsExecutions, args.RemainingExecutions); };
+sixtyFpsHighAccuracyTimer.Elapsed += (sender, args) => { LogEvent(sixtyFpsHighAccuracyTimerExecutions, args.RemainingExecutions); };
 
-using HighAccuracyTimer oneSecond = new HighAccuracyWindowsTimer(AutoStart: false)
+using HighAccuracyTimer oneSecondHighAccuracyTimer = new HighAccuracyWindowsTimer(AutoStart: false)
 {
     Rate = TimeSpan.FromSeconds(1),
-    StopAfter = 10,
 };
-oneSecond.Elapsed += (sender, args) => { LogEvent(oneSecondExecutions, args.RemainingExecutions); };
+oneSecondHighAccuracyTimer.Elapsed += (sender, args) => { LogEvent(oneSecondHighAccuracyTimerExecutions, args.RemainingExecutions); };
+oneSecondHighAccuracyTimer.Elapsed += (sender, args) => { Console.WriteLine($"Running time: {args.TimeStamp}"); };
 
-using HighAccuracyTimer oneMs = new HighAccuracyWindowsTimer(AutoStart: false)
+using HighAccuracyTimer oneMsHighAccuracyTimer = new HighAccuracyWindowsTimer(AutoStart: false)
 {
     Rate = TimeSpan.FromMilliseconds(1),
     StopAfter = 2000,
 };
-oneMs.Elapsed += (sender, args) => { LogEvent(oneMsExecutions, args.RemainingExecutions); };
+oneMsHighAccuracyTimer.Elapsed += (sender, args) => { LogEvent(oneMsHighAccuracyTimerExecutions, args.RemainingExecutions); };
 
-var fiftyMsTimersTimer = new System.Timers.Timer(TimeSpan.FromMilliseconds(50))
-{
-    Enabled = false,
-};
-fiftyMsTimersTimer.Elapsed += (sender, args) => { LogEvent(oneMsExecutions, -1); };
+using var fiftyMsTimersTimer = CreateTimersTimer(TimeSpan.FromMilliseconds(50), fiftyMsTimersTimerExecutions);
+using var sixtyFpsTimersTimer = CreateTimersTimer(sixtyFpsRate, sixtyFpsTimersTimerExecutions);
+using var oneSecondTimersTimer = CreateTimersTimer(TimeSpan.FromSeconds(1), oneSecondTimersTimerExecutions);
+using var oneMsTimersTimer = CreateTimersTimer(TimeSpan.FromMilliseconds(1), oneMsTimersTimerExecutions);
 
-// TODO Set up rest of timers, do not let them auto start. Set remaining executions to -1 if timer does not have that concept
+await using var fiftyMsThreadingTimer = CreateThreadingTimer(TimeSpan.FromMilliseconds(50), fiftyMsThreadingTimerExecutions);
+await using var sixtyFpsThreadingTimer = CreateThreadingTimer(sixtyFpsRate, sixtyFpsThreadingTimerExecutions);
+await using var oneSecondThreadingTimer = CreateThreadingTimer(TimeSpan.FromSeconds(1), oneSecondThreadingTimerExecutions);
+await using var oneMsThreadingTimer = CreateThreadingTimer(TimeSpan.FromMilliseconds(1), oneMsThreadingTimerExecutions);
+
+using CancellationTokenSource periodicTimerCancellationTokenSource = new();
 
 startTime = Stopwatch.GetTimestamp();
-// TODO Manually start all timers
-fiftyMs.Start();
+
+Task[] periodicTimerTasks =
+[
+    RunPeriodicTimerAsync(TimeSpan.FromMilliseconds(50), fiftyMsPeriodicTimerExecutions, periodicTimerCancellationTokenSource.Token),
+    RunPeriodicTimerAsync(sixtyFpsRate, sixtyFpsPeriodicTimerExecutions, periodicTimerCancellationTokenSource.Token),
+    RunPeriodicTimerAsync(TimeSpan.FromSeconds(1), oneSecondPeriodicTimerExecutions, periodicTimerCancellationTokenSource.Token),
+    RunPeriodicTimerAsync(TimeSpan.FromMilliseconds(1), oneMsPeriodicTimerExecutions, periodicTimerCancellationTokenSource.Token),
+];
+
+fiftyMsHighAccuracyTimer.Start();
+sixtyFpsHighAccuracyTimer.Start();
+oneSecondHighAccuracyTimer.Start();
+oneMsHighAccuracyTimer.Start();
+
+fiftyMsTimersTimer.Start();
+sixtyFpsTimersTimer.Start();
+oneSecondTimersTimer.Start();
+oneMsTimersTimer.Start();
+
+StartThreadingTimer(fiftyMsThreadingTimer, TimeSpan.FromMilliseconds(50));
+StartThreadingTimer(sixtyFpsThreadingTimer, sixtyFpsRate);
+StartThreadingTimer(oneSecondThreadingTimer, TimeSpan.FromSeconds(1));
+StartThreadingTimer(oneMsThreadingTimer, TimeSpan.FromMilliseconds(1));
 
 await Task.Delay(20100);
 
-// Set up rest of log files
-WriteLogFile(fiftyMsPeriodicTimerExecutions);
-WriteLogFile(fiftyMsTimersTimerExecutions);
-WriteLogFile(fiftyMsThreadingTimerExecutions);
-WriteLogFile(fiftyMsExecutions);
-WriteLogFile(sixtyFpsExecutions);
-WriteLogFile(oneSecondExecutions);
-WriteLogFile(oneMsPeriodicTimerExecutions);
-WriteLogFile(oneMsTimersTimerExecutions);
-WriteLogFile(oneMsThreadingTimerExecutions);
-WriteLogFile(oneMsExecutions);
+fiftyMsHighAccuracyTimer.Stop();
+sixtyFpsHighAccuracyTimer.Stop();
+oneSecondHighAccuracyTimer.Stop();
+oneMsHighAccuracyTimer.Stop();
+
+fiftyMsTimersTimer.Stop();
+sixtyFpsTimersTimer.Stop();
+oneSecondTimersTimer.Stop();
+oneMsTimersTimer.Stop();
+
+StopThreadingTimer(fiftyMsThreadingTimer);
+StopThreadingTimer(sixtyFpsThreadingTimer);
+StopThreadingTimer(oneSecondThreadingTimer);
+StopThreadingTimer(oneMsThreadingTimer);
+
+periodicTimerCancellationTokenSource.Cancel();
+await Task.WhenAll(periodicTimerTasks);
+
+foreach (var logs in allLogs)
+{
+    WriteLogFile(logs);
+}
 
 void WriteLogFile(List<string> logs)
 {
-    var filePath = $"{logs[0].Replace(":", "")}.log";
-    File.WriteAllLines(filePath, logs);
+    string[] snapshot;
+    lock (logs)
+    {
+        snapshot = [.. logs];
+    }
+
+    var filePath = $"{snapshot[0].Replace(":", "")}.log";
+    File.WriteAllLines(filePath, snapshot);
 }
 
 void LogEvent(List<string> logs, int executionsRemaining)
 {
     var elapsed = Stopwatch.GetElapsedTime(startTime);
-    logs.Add($"* Timestamp: {elapsed} - Remaining Executions: {executionsRemaining}");
+    lock (logs)
+    {
+        logs.Add($"* Timestamp: {elapsed} - Remaining Executions: {executionsRemaining}");
+    }
+}
+
+System.Timers.Timer CreateTimersTimer(TimeSpan interval, List<string> logs)
+{
+    var timer = new System.Timers.Timer(interval)
+    {
+        AutoReset = true,
+        Enabled = false,
+    };
+    timer.Elapsed += (sender, args) => { LogEvent(logs, -1); };
+    return timer;
+}
+
+System.Threading.Timer CreateThreadingTimer(TimeSpan interval, List<string> logs)
+{
+    return new System.Threading.Timer(
+        callback: _ => { LogEvent(logs, -1); },
+        state: null,
+        dueTime: Timeout.InfiniteTimeSpan,
+        period: interval);
+}
+
+void StartThreadingTimer(System.Threading.Timer timer, TimeSpan interval)
+{
+    timer.Change(interval, interval);
+}
+
+void StopThreadingTimer(System.Threading.Timer timer)
+{
+    timer.Change(Timeout.InfiniteTimeSpan, Timeout.InfiniteTimeSpan);
+}
+
+async Task RunPeriodicTimerAsync(TimeSpan interval, List<string> logs, CancellationToken cancellationToken)
+{
+    using PeriodicTimer timer = new(interval);
+
+    try
+    {
+        while (await timer.WaitForNextTickAsync(cancellationToken))
+        {
+            LogEvent(logs, -1);
+        }
+    }
+    catch (OperationCanceledException)
+    {
+    }
 }
