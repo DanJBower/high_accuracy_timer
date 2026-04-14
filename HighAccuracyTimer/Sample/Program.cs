@@ -237,6 +237,35 @@ async Task RunTimerComparison()
         }
     }
 
+    void LogSchedulerEvent(List<string> logs, ScheduledTick tick)
+    {
+        var elapsed = Stopwatch.GetElapsedTime(startTime);
+        var logState = logStates[logs];
+        lock (logs)
+        {
+            var elapsedTicks = elapsed.Ticks;
+            var timeSinceLastLog = logState.ExecutionCount == 0
+                ? elapsed
+                : TimeSpan.FromTicks(elapsedTicks - logState.PreviousElapsedTicks);
+            logState.ExecutionCount++;
+            logState.PreviousElapsedTicks = elapsedTicks;
+
+            var targetElapsed = TimeSpan.FromTicks(logState.ExecutionCount * logState.IntervalTicks);
+            var totalDrift = elapsed - targetElapsed;
+            var remainingScheduledTicks = tick.RemainingScheduledTicksAtDispatch is long remaining ? remaining.ToString() : "Infinite";
+
+            logs.Add(
+                $"* Timestamp: {FormatElapsedForLog(elapsed)} - Since Last: {FormatElapsedForLog(timeSinceLastLog)} - Target Time: {FormatElapsedForLog(targetElapsed)} - Total Drift: {FormatElapsedForLog(totalDrift)}" +
+                $" - Tick Sequence: {tick.Sequence}" +
+                $" - Tick Skipped: {tick.SkippedCount}" +
+                $" - Tick Scheduled Offset: {FormatElapsedForLog(tick.ScheduledOffset)}" +
+                $" - Tick Actual Offset: {FormatElapsedForLog(tick.ActualOffset)}" +
+                $" - Tick Since Previous Delivery: {FormatElapsedForLog(tick.SincePreviousDelivery)}" +
+                $" - Tick Drift: {FormatElapsedForLog(tick.Drift)}" +
+                $" - Remaining Scheduled Ticks: {remainingScheduledTicks}");
+        }
+    }
+
     System.Timers.Timer CreateTimersTimer(TimeSpan interval, List<string> logs)
     {
         var timer = new System.Timers.Timer(interval)
@@ -277,7 +306,7 @@ async Task RunTimerComparison()
     {
         await foreach (var tick in scheduler.GetTicksAsync())
         {
-            LogEvent(logs, tick.RemainingScheduledTicksAtDispatch is long remaining ? (int)remaining : -1);
+            LogSchedulerEvent(logs, tick);
         }
     }
 
