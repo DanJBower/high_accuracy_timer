@@ -38,6 +38,7 @@ async Task RunMoreComplexSample()
     {
         await Task.Delay(500, ct);
         AddLog($"Normal: {tick}");
+        throw new Exception("Test");
     });
 
     await scheduler.StartAsync();
