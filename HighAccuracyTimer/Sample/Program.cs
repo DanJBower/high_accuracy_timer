@@ -4,6 +4,8 @@ using System.Diagnostics;
 
 #pragma warning disable CA1859
 
+// TODO Create lists for oneSecond and sixtyFps periodic, timers, and threading timers
+// TODO Make all list names consistent
 List<string> fiftyMsPeriodicTimerExecutions = ["50ms Period Timer:"];
 List<string> fiftyMsTimersTimerExecutions = ["50ms Timers Timer:"];
 List<string> fiftyMsThreadingTimerExecutions = ["50ms Threading Timer:"];
@@ -17,45 +19,47 @@ List<string> oneMsExecutions = ["1ms High Accuracy Timer:"];
 
 long startTime = 0;
 
-using HighAccuracyTimer timer = new HighAccuracyWindowsTimer()
-{
-    Rate = TimeSpan.FromSeconds(1),
-};
-
-timer.Elapsed += (sender, args) =>
-{
-    Console.WriteLine($"Timestamp: {args.TimeStamp}");
-};
-
 using HighAccuracyTimer fiftyMs = new HighAccuracyWindowsTimer(AutoStart: false)
 {
     Rate = TimeSpan.FromMilliseconds(50),
 };
-
 fiftyMs.Elapsed += (sender, args) => { LogEvent(fiftyMsExecutions, args.RemainingExecutions); };
 
 using HighAccuracyTimer sixtyFps = new HighAccuracyWindowsTimer(AutoStart: false)
 {
     Rate = TimeSpanUtilties.FromHz(60),
 };
+sixtyFps.Elapsed += (sender, args) => { LogEvent(sixtyFpsExecutions, args.RemainingExecutions); };
 
 using HighAccuracyTimer oneSecond = new HighAccuracyWindowsTimer(AutoStart: false)
 {
     Rate = TimeSpan.FromSeconds(1),
     StopAfter = 10,
 };
+oneSecond.Elapsed += (sender, args) => { LogEvent(oneSecondExecutions, args.RemainingExecutions); };
 
 using HighAccuracyTimer oneMs = new HighAccuracyWindowsTimer(AutoStart: false)
 {
     Rate = TimeSpan.FromMilliseconds(1),
     StopAfter = 2000,
 };
+oneMs.Elapsed += (sender, args) => { LogEvent(oneMsExecutions, args.RemainingExecutions); };
+
+var fiftyMsTimersTimer = new System.Timers.Timer(TimeSpan.FromMilliseconds(50))
+{
+    Enabled = false,
+};
+fiftyMsTimersTimer.Elapsed += (sender, args) => { LogEvent(oneMsExecutions, -1); };
+
+// TODO Set up rest of timers, do not let them auto start. Set remaining executions to -1 if timer does not have that concept
 
 startTime = Stopwatch.GetTimestamp();
+// TODO Manually start all timers
 fiftyMs.Start();
 
-await Task.Delay(20000);
+await Task.Delay(20100);
 
+// Set up rest of log files
 WriteLogFile(fiftyMsPeriodicTimerExecutions);
 WriteLogFile(fiftyMsTimersTimerExecutions);
 WriteLogFile(fiftyMsThreadingTimerExecutions);
