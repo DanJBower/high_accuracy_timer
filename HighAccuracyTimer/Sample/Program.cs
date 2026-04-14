@@ -15,9 +15,63 @@ await RunMoreComplexSample();
 
 async Task RunMoreComplexSample()
 {
-    Console.WriteLine("Running complex sample (10s)");
+    List<string> log = [];
+    Console.WriteLine("Running complex sample (35s)");
+
+    await using var scheduler = new HighAccuracyScheduler(
+        new HighAccuracyWindowsTimer(),
+        new SchedulerOptions
+        {
+            Period = TimeSpan.FromSeconds(1),
+            StopAfterScheduledTicks = 4,
+        });
+
+    await using var dispatcher = new HighAccuracyDispatcher(scheduler);
+
+    using var sub1 = dispatcher.Subscribe(async (tick, ct) =>
+    {
+        await Task.Delay(200, ct);
+        AddLog($"Short: {tick}");
+    });
+
+    using var sub2 = dispatcher.Subscribe(async (tick, ct) =>
+    {
+        await Task.Delay(500, ct);
+        AddLog($"Normal: {tick}");
+    });
+
+    await scheduler.StartAsync();
+    var dispatchingTask = dispatcher.DispatchAsync();
+    await Task.Delay(TimeSpan.FromSeconds(2));
+
+    scheduler.SetRemainingScheduledTicks(8);
+
+    await Task.Delay(TimeSpan.FromSeconds(3));
+
+    await sub1.DisposeAsync();
+
+    using var sub3 = dispatcher.Subscribe(async (tick, ct) =>
+    {
+        // Will eventually cause 2 cycles to be skipped, est (20s)
+        await Task.Delay(2100, ct);
+        AddLog($"Overrun causer: {tick}");
+    });
+    scheduler.SetRemainingScheduledTicks(null);
+
+    await Task.Delay(TimeSpan.FromSeconds(30));
+
+    await scheduler.StopAsync();
+    await dispatchingTask;
 
     Console.WriteLine("Finished running complex sample");
+
+    File.WriteAllLines("Complex Test.log", log);
+
+    void AddLog(string s)
+    {
+        log.Add(s);
+        Console.WriteLine(s);
+    }
 }
 
 async Task RunTimerComparison()
