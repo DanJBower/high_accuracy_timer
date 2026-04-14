@@ -17,6 +17,7 @@ public sealed class HighAccuracyScheduler : Scheduler
     private long? _configuredRemainingScheduledTicks;
     private long? _remainingScheduledTicks;
     private TimeSpan? _previousDeliveryOffset;
+    private TaskCompletionSource<bool> _waitCompletedSource = CreateCompletedWaitSource();
 
     public HighAccuracyScheduler(HighAccuracyTimer timer, SchedulerOptions options)
     {
@@ -92,6 +93,7 @@ public sealed class HighAccuracyScheduler : Scheduler
         }
 
         bool shouldCancelTimer = false;
+        Task? waitCompletionTask = null;
 
         lock (_lock)
         {
@@ -104,12 +106,14 @@ public sealed class HighAccuracyScheduler : Scheduler
             {
                 _isRunning = false;
                 shouldCancelTimer = _waitInProgress;
+                waitCompletionTask = _waitCompletedSource.Task;
             }
         }
 
         if (shouldCancelTimer)
         {
             _timer.CancelAsync().GetAwaiter().GetResult();
+            waitCompletionTask!.GetAwaiter().GetResult();
         }
     }
 
@@ -120,6 +124,11 @@ public sealed class HighAccuracyScheduler : Scheduler
         lock (_lock)
         {
             ThrowIfDisposed();
+            if (_isRunning)
+            {
+                throw new InvalidOperationException("The scheduler is already running.");
+            }
+
             if (_waitInProgress)
             {
                 throw new InvalidOperationException("The scheduler cannot be started while a wait is in progress.");
@@ -141,16 +150,19 @@ public sealed class HighAccuracyScheduler : Scheduler
         cancellationToken.ThrowIfCancellationRequested();
 
         bool shouldCancelTimer;
+        Task waitCompletionTask;
         lock (_lock)
         {
             ThrowIfDisposed();
             _isRunning = false;
             shouldCancelTimer = _waitInProgress;
+            waitCompletionTask = _waitCompletedSource.Task;
         }
 
         if (shouldCancelTimer)
         {
-            await _timer.CancelAsync(cancellationToken);
+            await _timer.CancelAsync(cancellationToken).ConfigureAwait(false);
+            await waitCompletionTask.WaitAsync(cancellationToken).ConfigureAwait(false);
         }
     }
 
@@ -167,7 +179,7 @@ public sealed class HighAccuracyScheduler : Scheduler
                 return null;
             }
 
-            await _timer.WaitAsync(nextTick.Value.DueIn, cancellationToken);
+            await _timer.WaitAsync(nextTick.Value.DueIn, cancellationToken).ConfigureAwait(false);
 
             return CompleteWait(
                 sequence: nextTick.Value.Sequence,
@@ -234,6 +246,7 @@ public sealed class HighAccuracyScheduler : Scheduler
             }
 
             _waitInProgress = true;
+            _waitCompletedSource = CreatePendingWaitSource();
         }
     }
 
@@ -242,6 +255,7 @@ public sealed class HighAccuracyScheduler : Scheduler
         lock (_lock)
         {
             _waitInProgress = false;
+            _waitCompletedSource.TrySetResult(true);
         }
     }
 
@@ -336,6 +350,18 @@ public sealed class HighAccuracyScheduler : Scheduler
     private void ThrowIfDisposed()
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
+    }
+
+    private static TaskCompletionSource<bool> CreateCompletedWaitSource()
+    {
+        var source = CreatePendingWaitSource();
+        source.SetResult(true);
+        return source;
+    }
+
+    private static TaskCompletionSource<bool> CreatePendingWaitSource()
+    {
+        return new(TaskCreationOptions.RunContinuationsAsynchronously);
     }
 
     private readonly record struct PlannedTick(
