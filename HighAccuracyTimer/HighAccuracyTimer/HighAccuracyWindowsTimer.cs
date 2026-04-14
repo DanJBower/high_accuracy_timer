@@ -9,6 +9,7 @@ public class HighAccuracyWindowsTimer : HighAccuracyTimer
     private readonly Lock _lock = new();
     private readonly EventWaitHandle _cancelSignal = new(initialState: false, EventResetMode.ManualReset);
     private readonly SafeWaitHandle _timerHandle;
+    private readonly EventWaitHandle _timerSignal = new(initialState: false, EventResetMode.ManualReset);
 
     private bool _disposed;
     private bool _waitInProgress;
@@ -25,9 +26,11 @@ public class HighAccuracyWindowsTimer : HighAccuracyTimer
         {
             throw CreateWin32Exception("Failed to create a high-resolution waitable timer.");
         }
+
+        _timerSignal.SafeWaitHandle = DuplicateHandle(_timerHandle);
     }
 
-    public ValueTask WaitAsync(TimeSpan dueIn, CancellationToken cancellationToken = default)
+    public async ValueTask WaitAsync(TimeSpan dueIn, CancellationToken cancellationToken = default)
     {
         if (dueIn < TimeSpan.Zero)
         {
@@ -42,7 +45,7 @@ public class HighAccuracyWindowsTimer : HighAccuracyTimer
         {
             if (dueIn == TimeSpan.Zero)
             {
-                return ValueTask.CompletedTask;
+                return;
             }
 
             using var cancellationRegistration = cancellationToken.CanBeCanceled
@@ -51,13 +54,11 @@ public class HighAccuracyWindowsTimer : HighAccuracyTimer
 
             ArmTimer(dueIn);
 
-            var waitResult = WaitForTimerOrCancellation();
-            if (waitResult == NativeMethods.WAIT_OBJECT_0 + 1)
+            var waitResult = await WaitForTimerOrCancellationAsync().ConfigureAwait(false);
+            if (waitResult == WaitResult.Cancellation)
             {
                 cancellationToken.ThrowIfCancellationRequested();
             }
-
-            return ValueTask.CompletedTask;
         }
         finally
         {
@@ -101,6 +102,7 @@ public class HighAccuracyWindowsTimer : HighAccuracyTimer
 
         SignalCancellation();
         _cancelSignal.Dispose();
+        _timerSignal.Dispose();
         _timerHandle.Dispose();
     }
 
@@ -158,48 +160,44 @@ public class HighAccuracyWindowsTimer : HighAccuracyTimer
         }
     }
 
-    private uint WaitForTimerOrCancellation()
+    private Task<WaitResult> WaitForTimerOrCancellationAsync()
     {
-        bool timerHandleReferenced = false;
-        bool cancelHandleReferenced = false;
+        var state = new AsyncWaitState();
 
-        try
-        {
-            _timerHandle.DangerousAddRef(ref timerHandleReferenced);
-            _cancelSignal.SafeWaitHandle.DangerousAddRef(ref cancelHandleReferenced);
-
-            IntPtr[] handles =
-            [
-                _timerHandle.DangerousGetHandle(),
-                _cancelSignal.SafeWaitHandle.DangerousGetHandle(),
-            ];
-
-            var waitResult = NativeMethods.WaitForMultipleObjects(
-                nCount: (uint)handles.Length,
-                lpHandles: handles,
-                bWaitAll: false,
-                dwMilliseconds: NativeMethods.INFINITE);
-
-            return waitResult switch
+        state.TimerRegistration = ThreadPool.RegisterWaitForSingleObject(
+            waitObject: _timerSignal,
+            callBack: static (waitState, timedOut) =>
             {
-                NativeMethods.WAIT_OBJECT_0 => waitResult,
-                NativeMethods.WAIT_OBJECT_0 + 1 => waitResult,
-                NativeMethods.WAIT_FAILED => throw CreateWin32Exception("Waiting on the timer source failed."),
-                _ => throw new InvalidOperationException($"Unexpected wait result: 0x{waitResult:X8}."),
-            };
-        }
-        finally
-        {
-            if (cancelHandleReferenced)
-            {
-                _cancelSignal.SafeWaitHandle.DangerousRelease();
-            }
+                if (timedOut)
+                {
+                    ((AsyncWaitState)waitState!).TrySetException(new InvalidOperationException("The timer wait unexpectedly timed out."));
+                    return;
+                }
 
-            if (timerHandleReferenced)
+                ((AsyncWaitState)waitState!).TrySetResult(WaitResult.Timer);
+            },
+            state: state,
+            millisecondsTimeOutInterval: Timeout.Infinite,
+            executeOnlyOnce: true);
+
+        state.CancelRegistration = ThreadPool.RegisterWaitForSingleObject(
+            waitObject: _cancelSignal,
+            callBack: static (waitState, timedOut) =>
             {
-                _timerHandle.DangerousRelease();
-            }
-        }
+                if (timedOut)
+                {
+                    ((AsyncWaitState)waitState!).TrySetException(new InvalidOperationException("The cancellation wait unexpectedly timed out."));
+                    return;
+                }
+
+                ((AsyncWaitState)waitState!).TrySetResult(WaitResult.Cancellation);
+            },
+            state: state,
+            millisecondsTimeOutInterval: Timeout.Infinite,
+            executeOnlyOnce: true);
+
+        state.OnRegistrationsReady();
+        return state.Task;
     }
 
     private void ThrowIfDisposed()
@@ -212,14 +210,92 @@ public class HighAccuracyWindowsTimer : HighAccuracyTimer
         return new(Marshal.GetLastWin32Error(), message);
     }
 
+    private static SafeWaitHandle DuplicateHandle(SafeWaitHandle sourceHandle)
+    {
+        var currentProcess = NativeMethods.GetCurrentProcess();
+        if (!NativeMethods.DuplicateHandle(
+                hSourceProcessHandle: currentProcess,
+                hSourceHandle: sourceHandle,
+                hTargetProcessHandle: currentProcess,
+                lpTargetHandle: out var duplicatedHandle,
+                dwDesiredAccess: 0,
+                bInheritHandle: false,
+                dwOptions: NativeMethods.DUPLICATE_SAME_ACCESS))
+        {
+            throw CreateWin32Exception("Failed to duplicate the waitable timer handle.");
+        }
+
+        return duplicatedHandle;
+    }
+
+    private enum WaitResult
+    {
+        Timer,
+        Cancellation,
+    }
+
+    private sealed class AsyncWaitState
+    {
+        private readonly TaskCompletionSource<WaitResult> _completion =
+            new(TaskCreationOptions.RunContinuationsAsynchronously);
+        private int _completed;
+        private int _registrationsReady;
+
+        public RegisteredWaitHandle? TimerRegistration { get; set; }
+        public RegisteredWaitHandle? CancelRegistration { get; set; }
+
+        public Task<WaitResult> Task => _completion.Task;
+
+        public void OnRegistrationsReady()
+        {
+            Volatile.Write(ref _registrationsReady, 1);
+            if (Volatile.Read(ref _completed) != 0)
+            {
+                UnregisterAll();
+            }
+        }
+
+        public void TrySetResult(WaitResult result)
+        {
+            if (Interlocked.CompareExchange(ref _completed, 1, 0) != 0)
+            {
+                return;
+            }
+
+            _completion.TrySetResult(result);
+            if (Volatile.Read(ref _registrationsReady) != 0)
+            {
+                UnregisterAll();
+            }
+        }
+
+        public void TrySetException(Exception exception)
+        {
+            if (Interlocked.CompareExchange(ref _completed, 1, 0) != 0)
+            {
+                return;
+            }
+
+            _completion.TrySetException(exception);
+            if (Volatile.Read(ref _registrationsReady) != 0)
+            {
+                UnregisterAll();
+            }
+        }
+
+        private void UnregisterAll()
+        {
+            TimerRegistration?.Unregister(waitObject: null);
+            CancelRegistration?.Unregister(waitObject: null);
+        }
+    }
+
     private static class NativeMethods
     {
         internal const uint SYNCHRONIZE = 0x00100000;
         internal const uint TIMER_MODIFY_STATE = 0x0002;
         internal const uint CREATE_WAITABLE_TIMER_HIGH_RESOLUTION = 0x00000002;
-        internal const uint WAIT_OBJECT_0 = 0x00000000;
-        internal const uint WAIT_FAILED = 0xFFFFFFFF;
-        internal const uint INFINITE = 0xFFFFFFFF;
+        internal const uint DUPLICATE_SAME_ACCESS = 0x00000002;
 
         [DllImport("kernel32.dll", EntryPoint = "CreateWaitableTimerExW", SetLastError = true, CharSet = CharSet.Unicode)]
         internal static extern SafeWaitHandle CreateWaitableTimerExW(
@@ -244,10 +320,17 @@ public class HighAccuracyWindowsTimer : HighAccuracyTimer
         internal static extern bool CancelWaitableTimer(SafeWaitHandle hTimer);
 
         [DllImport("kernel32.dll", SetLastError = true)]
-        internal static extern uint WaitForMultipleObjects(
-            uint nCount,
-            IntPtr[] lpHandles,
-            [MarshalAs(UnmanagedType.Bool)] bool bWaitAll,
-            uint dwMilliseconds);
+        internal static extern IntPtr GetCurrentProcess();
+
+        [DllImport("kernel32.dll", SetLastError = true)]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        internal static extern bool DuplicateHandle(
+            IntPtr hSourceProcessHandle,
+            SafeWaitHandle hSourceHandle,
+            IntPtr hTargetProcessHandle,
+            out SafeWaitHandle lpTargetHandle,
+            uint dwDesiredAccess,
+            [MarshalAs(UnmanagedType.Bool)] bool bInheritHandle,
+            uint dwOptions);
     }
 }
