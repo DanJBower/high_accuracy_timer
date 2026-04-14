@@ -6,13 +6,68 @@ Currently only supports Windows. Windows implementation uses the WaitableTimerEx
 
 ## Usage sample
 
-    using HighAccuracyTimer timer = new HighAccuracyWindowsTimer()
-    {
-        Rate = TimeSpan.FromMilliseconds(50),
-        StopAfter = 50,
-    };
+### Single consumer
 
-    timer.Elapsed += (sender, args) =>
+    // Set up platform specific time source
+    using var timeSource = new HighAccuracyWindowsTimer();
+
+    // Create and start scheduler (the timer)
+    await using var timer = new HighAccuracyScheduler(
+        timer: timeSource,
+        options: new SchedulerOptions
+        {
+            Period = TimeSpanUtilties.FromHz(4),
+        });
+
+    await timer.StartAsync();
+
+    // Configure what happens on the timer
+    var onTimerTask = Task.Run(async () =>
     {
-        // Code to run when timer is triggered
-    };
+        await foreach (var tick in timer.GetTicksAsync())
+        {
+            Console.WriteLine("Hello");
+        }
+    });
+
+    // Do whatever else your program needs to do
+    await Task.Delay(TimeSpan.FromSeconds(5));
+
+    // Clean up
+    await timer.StopAsync();
+    await onTimerTask;
+
+### Multiple consumers (using dispatcher)
+
+    // Set up platform specific time source
+    using var timeSource = new HighAccuracyWindowsTimer();
+
+    // Create scheduler (the timer)
+    await using var timer = new HighAccuracyScheduler(
+        timer: timeSource,
+        options: new SchedulerOptions
+        {
+            Period = TimeSpanUtilties.FromHz(4),
+            StopAfterScheduledTicks = 20,
+        });
+
+    // Configure dispatcher and subscriptions
+    await using var dispatcher = new HighAccuracyDispatcher(timer);
+
+    using var subscription1 = dispatcher.Subscribe(async (tick, ct) =>
+    {
+        Console.WriteLine("Hello");
+    });
+
+    using var subscription2 = dispatcher.Subscribe(async (tick, ct) =>
+    {
+        await Task.Delay(50, ct);
+        Console.WriteLine("Hello again");
+    });
+
+    // Start scheduler and dispatcher
+    await timer.StartAsync();
+
+    // Will automatically stop and clean up when scheduled number
+    // of ticks has been reached
+    await dispatcher.DispatchAsync();

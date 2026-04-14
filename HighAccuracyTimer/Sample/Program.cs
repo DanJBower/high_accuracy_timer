@@ -10,8 +10,78 @@ using System.Timers.Timer timer = new(TimeSpan.FromSeconds(1))
 };
 timer.Elapsed += (_, _) => Console.WriteLine($"Running for: {Stopwatch.GetElapsedTime(programStart).TotalSeconds:00}s");
 
+await ReadmeSample();
+await ReadmeSampleDispatcher();
 await RunTimerComparison();
 await RunMoreComplexSample();
+
+async Task ReadmeSample()
+{
+    // Set up platform specific time source
+    using var timeSource = new HighAccuracyWindowsTimer();
+
+    // Create and start scheduler (the timer)
+    // Will run indefinitely until stopped
+    await using var timer = new HighAccuracyScheduler(
+        timer: timeSource,
+        options: new SchedulerOptions
+        {
+            Period = TimeSpanUtilties.FromHz(4),
+        });
+
+    await timer.StartAsync();
+
+    // Configure what happens on the timer 
+    var onTimerTask = Task.Run(async () =>
+    {
+        await foreach (var tick in timer.GetTicksAsync())
+        {
+            Console.WriteLine("Hello");
+        }
+    });
+
+    // Do whatever else your program needs to do
+    await Task.Delay(TimeSpan.FromSeconds(5));
+
+    // Clean up
+    await timer.StopAsync(); 
+    await onTimerTask;
+}
+
+async Task ReadmeSampleDispatcher()
+{
+    // Set up platform specific time source
+    using var timeSource = new HighAccuracyWindowsTimer();
+
+    // Create scheduler (the timer)
+    await using var timer = new HighAccuracyScheduler(
+        timer: timeSource,
+        options: new SchedulerOptions
+        {
+            Period = TimeSpanUtilties.FromHz(4),
+            StopAfterScheduledTicks = 20,
+        });
+
+    // Configure dispatcher and subscriptions
+    await using var dispatcher = new HighAccuracyDispatcher(timer);
+
+    using var subscription1 = dispatcher.Subscribe(async (tick, ct) =>
+    {
+        Console.WriteLine("Hello");
+    });
+
+    using var subscription2 = dispatcher.Subscribe(async (tick, ct) =>
+    {
+        await Task.Delay(50, ct);
+        Console.WriteLine("Hello again");
+    });
+
+    // Start scheduler and dispatcher
+    // Will automatically stop and clean up when scheduled number
+    // of ticks has been reached
+    await timer.StartAsync();
+    await dispatcher.DispatchAsync();
+}
 
 async Task RunMoreComplexSample()
 {
@@ -52,7 +122,7 @@ async Task RunMoreComplexSample()
 
         await WaitForDelayOrDispatchAsync(dispatchingTask, TimeSpan.FromSeconds(3));
 
-        await sub1.DisposeAsync();
+        sub1.Dispose();
 
         using var sub3 = dispatcher.Subscribe(async (tick, ct) =>
         {
