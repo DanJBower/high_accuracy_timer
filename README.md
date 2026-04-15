@@ -10,6 +10,9 @@ Provides a:
 
 * Windows timer source for close to realtime.
 * A basic scheduler that accounts for drift and skips cycles if overruns happen to catch back up.
+  * Provides `WaitForNextTickAsync` for manually control of when next timer tick is consumed.
+  * Provides `GetTicksAsync` to allow for async foreach loop.
+  * Timer tracks start time, but doesn't actively run in background until one of the two async functions are called for getting the next tick. Prevents unnecessary processing
 * A dispatcher to easily support multiple consumers to the same timer.
 
 ## Usage sample
@@ -30,6 +33,7 @@ Provides a:
     await timer.StartAsync();
 
     // Configure what happens on the timer
+    // Must be done after timer is started or GetTicksAsync will return immediately
     var onTimerTask = Task.Run(async () =>
     {
         await foreach (var tick in timer.GetTicksAsync())
@@ -62,6 +66,7 @@ Provides a:
     // Configure dispatcher and subscriptions
     await using var dispatcher = new HighAccuracyDispatcher(timer);
 
+    // Dispose subscriptions to unsubscribe
     using var subscription1 = dispatcher.Subscribe(async (tick, ct) =>
     {
         Console.WriteLine("Hello");
@@ -76,7 +81,7 @@ Provides a:
     // Start scheduler
     await timer.StartAsync();
 
-    // Start dispatcher
+    // Start dispatcher - must be started after timer
     // Will automatically stop and clean up when scheduled number
     // of ticks has been reached
     await dispatcher.DispatchAsync();
