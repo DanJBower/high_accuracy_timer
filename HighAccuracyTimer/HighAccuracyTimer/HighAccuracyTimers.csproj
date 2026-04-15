@@ -5,6 +5,29 @@
         <SupportedOSPlatformVersion>10.0.17134.0</SupportedOSPlatformVersion>
         <ImplicitUsings>enable</ImplicitUsings>
         <Nullable>enable</Nullable>
+        <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
+        <PackageProjectUrl>https://github.com/DanJBower/high_accuracy_timer</PackageProjectUrl>
+        <RepositoryUrl>https://github.com/DanJBower/high_accuracy_timer.git</RepositoryUrl>
+        <RepositoryType>Git</RepositoryType>
+        <IncludeSymbols>true</IncludeSymbols>
+        <SymbolPackageFormat>snupkg</SymbolPackageFormat>
+        <PackageId>HighAccuracyTimers</PackageId>
+        <Authors>DanJBower</Authors>
+        <AssemblyVersion Condition=" '$(pipelineAssemblyVersion)' != '' ">$(pipelineAssemblyVersion)</AssemblyVersion>
+        <FileVersion Condition=" '$(pipelineAssemblyVersion)' != '' ">$(pipelineAssemblyVersion)</FileVersion>
+        <Version Condition=" '$(pipelinePackageVersion)' != '' ">$(pipelinePackageVersion)</Version>
+        <AssemblyVersion Condition=" '$(pipelineAssemblyVersion)' == '' ">0.0.1.0</AssemblyVersion>
+        <FileVersion Condition=" '$(pipelineAssemblyVersion)' == '' ">0.0.1.0</FileVersion>
+        <Version Condition=" '$(pipelinePackageVersion)' == '' ">0.0.1</Version>
+        <PublishRepositoryUrl>true</PublishRepositoryUrl>
+        <EmbedUntrackedSources>true</EmbedUntrackedSources>
+        <PackageLicenseExpression>MIT</PackageLicenseExpression>
+        <PackageReadmeFile>README.md</PackageReadmeFile>
+        <Description>High-accuracy Windows timer and scheduler for .NET with low drift.</Description>
+        <PackageRequireLicenseAcceptance>false</PackageRequireLicenseAcceptance>
     </PropertyGroup>
 
+    <ItemGroup>
+        <None Include="..\..\README.md" Pack="true" PackagePath="\" Link="README.md" />
+    </ItemGroup>
 </Project>
