@@ -1,8 +1,10 @@
 # High Accuracy Timer
 
+[![NuGet](https://img.shields.io/nuget/v/HighAccuracyTimers.svg)](https://www.nuget.org/packages/HighAccuracyTimers/)
+
 An asynchronous timer in C# that runs closer to realtime than the various timers provided by .NET. Inbuilt C# timers run with an accuracy of 12-15ms (according to other things, sample project included so you can see accuracy on your PC vs my timer implementation, see log files in .exe directory). This project aims for sub ms accuracy and minimal drift.
 
-Currently only supports Windows. Windows implementation uses the WaitableTimerExW functions with the CREATE_WAITABLE_TIMER_HIGH_RESOLUTION flag to be as accurate as possible.
+Currently only supports Windows. Windows implementation uses the `WaitableTimerExW` functions with the `CREATE_WAITABLE_TIMER_HIGH_RESOLUTION` flag to be as accurate as possible.
 
 Provides a:
 
