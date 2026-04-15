@@ -73,9 +73,10 @@ Provides a:
         Console.WriteLine("Hello again");
     });
 
-    // Start scheduler and dispatcher
+    // Start scheduler
     await timer.StartAsync();
 
+    // Start dispatcher
     // Will automatically stop and clean up when scheduled number
     // of ticks has been reached
     await dispatcher.DispatchAsync();
