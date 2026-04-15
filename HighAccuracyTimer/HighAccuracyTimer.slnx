@@ -1,4 +1,4 @@
 <Solution>
   <Project Path="HighAccuracyTimer/HighAccuracyTimers.csproj" />
-  <Project Path="Sample/Sample.csproj" />
+  <Project Path="Sample/Sample.csproj" DefaultStartup="true" />
 </Solution>
